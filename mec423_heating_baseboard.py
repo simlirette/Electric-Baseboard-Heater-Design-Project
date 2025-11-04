@@ -66,7 +66,9 @@ print("="*70)
 # 2) COORDONNÉES DES NOEUDS - xy = py.array([[xi, yi], [xj, yj], ...])
 # ============================================================================
 
-# Domaine: r ∈ [R_int, R+a], z ∈ [0, pas_ailette/2]
+# Domaine:
+# - Tube: r ∈ [R_int, R], z ∈ [0, pas_ailette/2]
+# - Ailette: r ∈ [R, R+a], z ∈ [0, t_a/2]
 # Coordonnée x = r (rayon), y = z (axial)
 # z=0: plan de symétrie au milieu de l'ailette
 # z=pas_ailette/2: plan de symétrie entre deux ailettes
@@ -76,52 +78,99 @@ z_max = pas_ailette / 2  # Demi-distance entre ailettes
 # Coordonnées radiales (x = r)
 r_tube = py.linspace(R_int, R, nr_tube)
 r_ailette_sans_tube = py.linspace(R, R+a, nr_ailette+1)[1:]  # Sans répéter R
-r_coords = py.concatenate([r_tube, r_ailette_sans_tube])
+r_coords_tube = r_tube
+r_coords_ailette = py.linspace(R, R+a, nr_ailette+1)
 
 # Coordonnées axiales (y = z)
 # Zone 1: épaisseur d'ailette [0, t_a/2]
 z_ailette = py.linspace(0, t_a/2, nz_ailette)
-# Zone 2: espace entre ailettes [t_a/2, z_max]
+# Zone 2: espace entre ailettes [t_a/2, z_max] (seulement pour le tube)
 z_espace = py.linspace(t_a/2, z_max, nz_espace+1)[1:]  # Sans répéter t_a/2
-z_coords = py.concatenate([z_ailette, z_espace])
+z_coords_tube = py.concatenate([z_ailette, z_espace])
+z_coords_ailette = z_ailette
 
-# Génération de la grille de noeuds
-nz_total = len(z_coords)
-nr_total = len(r_coords)
-nn_total = nz_total * nr_total
+# Génération des nœuds de manière structurée
+# On va créer une grille en forme de L:
+# - Zone du tube: tous les r_tube × tous les z_coords_tube
+# - Zone de l'ailette: tous les r_ailette × tous les z_ailette (sauf r=R déjà dans tube)
 
-# Tableau de coordonnées
-xy = py.zeros((nn_total, 2))
+nr_tube = len(r_coords_tube)
+nr_ailette = len(r_coords_ailette)
+nz_tube = len(z_coords_tube)
+nz_ailette = len(z_coords_ailette)
 
-# Remplissage (x=r, y=z)
+# Créer la liste de nœuds et une map pour retrouver leur index
+xy_list = []
+node_map = {}  # (ir, iz, zone) -> node_id
+
 node_id = 0
-for iz in range(nz_total):
-    for ir in range(nr_total):
-        xy[node_id, 0] = r_coords[ir]  # x = r (rayon)
-        xy[node_id, 1] = z_coords[iz]  # y = z (axial)
+
+# Zone 1: TUBE (r ∈ [R_int, R], z ∈ [0, z_max])
+for iz in range(nz_tube):
+    for ir in range(nr_tube):
+        xy_list.append([r_coords_tube[ir], z_coords_tube[iz]])
+        node_map[('tube', ir, iz)] = node_id
         node_id += 1
+
+# Zone 2: AILETTE (r ∈ [R, R+a], z ∈ [0, t_a/2])
+for iz in range(nz_ailette):
+    for ir in range(nr_ailette):
+        # Ne pas dupliquer les nœuds à r=R qui sont déjà dans le tube
+        if not (ir == 0 and iz < nz_ailette):  # ir=0 correspond à r=R
+            xy_list.append([r_coords_ailette[ir], z_ailette[iz]])
+            node_map[('ailette', ir, iz)] = node_id
+            node_id += 1
+
+xy = py.array(xy_list)
+nn_total = len(xy_list)
 
 print(f"\nGénération du maillage:")
 print(f"  Nombre de noeuds: {nn_total}")
+print(f"    - Zone tube: {nr_tube} × {nz_tube} = {nr_tube * nz_tube}")
+print(f"    - Zone ailette: {nr_ailette} × {nz_ailette} - {nz_ailette} (partage avec tube) = {nr_ailette * nz_ailette - nz_ailette}")
 
 # ============================================================================
 # 3) CONNECTIVITÉS DES ÉLÉMENTS - cn = py.array([[i, j, k], [...]])
 # ============================================================================
 
 # Fonction pour obtenir le numéro de noeud (base 1) à partir des indices
-def get_node_number(ir, iz):
-    return iz * nr_total + ir + 1  # +1 car numérotation commence à 1
+# Pour la zone du tube
+def get_node_tube(ir, iz):
+    return node_map[('tube', ir, iz)] + 1  # +1 car numérotation commence à 1
+
+# Pour la zone de l'ailette (en gérant le partage avec le tube à r=R)
+def get_node_ailette(ir, iz):
+    if ir == 0:  # r=R, nœud partagé avec le tube
+        # Trouver l'index correspondant dans z_coords_tube
+        iz_tube = iz  # Même index car z_ailette est un sous-ensemble de z_coords_tube
+        return node_map[('tube', nr_tube-1, iz_tube)] + 1  # nr_tube-1 = dernier index radial du tube (r=R)
+    else:
+        return node_map[('ailette', ir, iz)] + 1
 
 # Création des éléments triangulaires
 elements = []
 
-for iz in range(nz_total - 1):
-    for ir in range(nr_total - 1):
+# Éléments dans le TUBE: r ∈ [R_int, R], z ∈ [0, z_max]
+for iz in range(nz_tube - 1):
+    for ir in range(nr_tube - 1):
         # Noeuds du quadrilatère
-        n1 = get_node_number(ir, iz)
-        n2 = get_node_number(ir+1, iz)
-        n3 = get_node_number(ir+1, iz+1)
-        n4 = get_node_number(ir, iz+1)
+        n1 = get_node_tube(ir, iz)
+        n2 = get_node_tube(ir+1, iz)
+        n3 = get_node_tube(ir+1, iz+1)
+        n4 = get_node_tube(ir, iz+1)
+
+        # Diviser le quadrilatère en 2 triangles
+        elements.append([n1, n2, n3])
+        elements.append([n1, n3, n4])
+
+# Éléments dans l'AILETTE: r ∈ [R, R+a], z ∈ [0, t_a/2]
+for iz in range(nz_ailette - 1):
+    for ir in range(nr_ailette - 1):
+        # Noeuds du quadrilatère
+        n1 = get_node_ailette(ir, iz)
+        n2 = get_node_ailette(ir+1, iz)
+        n3 = get_node_ailette(ir+1, iz+1)
+        n4 = get_node_ailette(ir, iz+1)
 
         # Diviser le quadrilatère en 2 triangles
         elements.append([n1, n2, n3])
@@ -130,6 +179,8 @@ for iz in range(nz_total - 1):
 cn = py.array(elements)
 ne = cn.shape[0]
 print(f"  Nombre d'éléments: {ne}")
+print(f"    - Zone tube: {2 * (nr_tube-1) * (nz_tube-1)}")
+print(f"    - Zone ailette: {2 * (nr_ailette-1) * (nz_ailette-1)}")
 
 # ============================================================================
 # 4) PROPRIÉTÉS MATÉRIAUX - kc = py.array([k1, k2, ...])
@@ -154,29 +205,29 @@ Q = 0  # Pas de génération volumique dans ce problème
 
 convection_faces = []
 
-# Trouver les indices correspondants
-idx_R = py.where(py.isclose(r_coords, R))[0][0]
-idx_Ra = py.where(py.isclose(r_coords, R+a))[0][0]
-idx_ta2 = py.where(py.isclose(z_coords, t_a/2))[0][0]
-idx_0 = 0
-idx_zmax = nz_total - 1
+# Trouver les indices dans z_coords_tube pour t_a/2 et z_max
+idx_ta2_tube = py.where(py.isclose(z_coords_tube, t_a/2))[0][0]
+idx_zmax_tube = nz_tube - 1
 
-# 1. Surface extérieure tube: r=R, z ∈ [t_a/2, z_max]
-for iz in range(idx_ta2, idx_zmax):
-    ni = get_node_number(idx_R, iz)
-    nj = get_node_number(idx_R, iz+1)
+# 1. Surface extérieure du tube: r=R (dernier r du tube), z ∈ [t_a/2, z_max]
+ir_R = nr_tube - 1  # Dernier indice radial du tube (r=R)
+for iz in range(idx_ta2_tube, idx_zmax_tube):
+    ni = get_node_tube(ir_R, iz)
+    nj = get_node_tube(ir_R, iz+1)
     convection_faces.append([ni, nj, h_conv, T_air])
 
-# 2. Surface supérieure ailette: z=t_a/2, r ∈ [R, R+a]
-for ir in range(idx_R, idx_Ra):
-    ni = get_node_number(ir, idx_ta2)
-    nj = get_node_number(ir+1, idx_ta2)
+# 2. Surface supérieure de l'ailette: z=t_a/2, r ∈ [R, R+a]
+iz_ta2_ailette = nz_ailette - 1  # Dernier indice axial de l'ailette (z=t_a/2)
+for ir in range(nr_ailette - 1):
+    ni = get_node_ailette(ir, iz_ta2_ailette)
+    nj = get_node_ailette(ir+1, iz_ta2_ailette)
     convection_faces.append([ni, nj, h_conv, T_air])
 
-# 3. Extrémité ailette: r=R+a, z ∈ [0, t_a/2]
-for iz in range(idx_0, idx_ta2):
-    ni = get_node_number(idx_Ra, iz)
-    nj = get_node_number(idx_Ra, iz+1)
+# 3. Extrémité de l'ailette: r=R+a, z ∈ [0, t_a/2]
+ir_Ra = nr_ailette - 1  # Dernier indice radial de l'ailette (r=R+a)
+for iz in range(nz_ailette - 1):
+    ni = get_node_ailette(ir_Ra, iz)
+    nj = get_node_ailette(ir_Ra, iz+1)
     convection_faces.append([ni, nj, h_conv, T_air])
 
 ijhTf = py.array(convection_faces)
@@ -192,11 +243,11 @@ sigma_i = P / (2 * pi * R_int * L)  # [W/m²]
 
 flux_faces = []
 
-# Surface intérieure: r=R_int, toutes les valeurs de z
-idx_Rint = 0  # Premier indice radial
-for iz in range(nz_total - 1):
-    ni = get_node_number(idx_Rint, iz)
-    nj = get_node_number(idx_Rint, iz+1)
+# Surface intérieure: r=R_int (premier indice radial du tube), toutes les valeurs de z
+ir_Rint = 0  # Premier indice radial du tube
+for iz in range(nz_tube - 1):
+    ni = get_node_tube(ir_Rint, iz)
+    nj = get_node_tube(ir_Rint, iz+1)
     flux_faces.append([ni, nj, sigma_i])
 
 ijflux = py.array(flux_faces)
