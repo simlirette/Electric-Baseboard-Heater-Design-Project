@@ -42,39 +42,49 @@ def solve_thermal_problem(L, P, h_conv, T_air, k_c, R, a, N, verbose=False):
 # FONCTION D'OPTIMISATION
 # ============================================================================
 
-def optimize_design(L, P, h_conv, T_air, k_c, 
+def optimize_design(L, P, h_conv, T_air, k_c,
                    R_range, a_range, N_min=10, N_max=200, N_step=5,
-                   T_max_limit=250, tolerance=2):
+                   T_max_target_min=248, T_max_target_max=250):
     """
     Optimise la conception en balayant R, a et N.
-    
+    Trouve 3 solutions optimales:
+    1. Température la plus proche de la cible [248-250°C]
+    2. Coût minimal dans la plage cible
+    3. Nombre d'ailettes minimal dans la plage cible
+
     Paramètres:
         L, P, h_conv, T_air, k_c: Paramètres du problème
         R_range: liste ou array des valeurs de R à tester [m]
         a_range: liste ou array des valeurs de a à tester [m]
         N_min, N_max, N_step: Plage et pas pour N
-        T_max_limit: Température maximale permise [°C]
-        tolerance: Tolérance sur T_max [°C]
-    
+        T_max_target_min, T_max_target_max: Plage de température cible [°C]
+
     Retourne:
-        DataFrame avec tous les résultats + configuration optimale
+        DataFrame avec tous les résultats + 3 configurations optimales
     """
-    
+
     print("="*80)
-    print(" OPTIMISATION DE LA PLINTHE CHAUFFANTE")
+    print(" OPTIMISATION DE LA PLINTHE CHAUFFANTE - 3 SOLUTIONS")
     print("="*80)
     print(f"\nParamètres du problème:")
     print(f"  L = {L} m, P = {P/1000} kW, h = {h_conv} W/m²°C, T_air = {T_air}°C")
-    print(f"\nCritère: {T_max_limit-tolerance} ≤ T_max ≤ {T_max_limit+tolerance} °C")
+    print(f"\nCritère de température: {T_max_target_min} ≤ T_max ≤ {T_max_target_max} °C")
     print(f"\nPlages de recherche:")
     print(f"  R: {min(R_range)*1000:.1f} à {max(R_range)*1000:.1f} mm ({len(R_range)} valeurs)")
     print(f"  a: {min(a_range)*1000:.1f} à {max(a_range)*1000:.1f} mm ({len(a_range)} valeurs)")
     print(f"  N: {N_min} à {N_max} par pas de {N_step}")
     print("="*80)
-    
+
     results = []
-    best_cost = float('inf')
-    best_config = None
+
+    # Trois configurations optimales à trouver
+    best_temp_match = None      # Tmax la plus proche de [248-250]
+    best_cost = None            # Coût minimal dans la plage
+    best_min_fins = None        # N minimal dans la plage
+
+    min_temp_deviation = float('inf')
+    min_cost = float('inf')
+    min_N = float('inf')
     
     total_configs = len(R_range) * len(a_range)
     config_count = 0
@@ -84,77 +94,126 @@ def optimize_design(L, P, h_conv, T_air, k_c,
         for a in a_range:
             config_count += 1
             print(f"\n[{config_count}/{total_configs}] Test: R={R*1000:.1f}mm, a={a*1000:.1f}mm")
-            
-            # Recherche du N_min qui respecte le critère
-            N_found = None
-            
+
+            # Balayer toutes les valeurs de N pour trouver toutes les solutions
             for N in range(N_min, N_max+1, N_step):
                 Tmax, Tmin, cout, success = solve_thermal_problem(
                     L, P, h_conv, T_air, k_c, R, a, N, verbose=False
                 )
-                
+
                 if not success:
                     continue
-                
-                # Vérifier si le critère est respecté
-                if Tmax <= T_max_limit + tolerance:
-                    N_found = N
-                    print(f"  → N_min trouvé: {N} (Tmax={Tmax:.2f}°C, Coût={cout:.2f}$)")
-                    
-                    # Enregistrer ce résultat
-                    results.append({
-                        'R_mm': R * 1000,
-                        'a_mm': a * 1000,
-                        'N': N,
-                        'Tmax_C': Tmax,
-                        'Tmin_C': Tmin,
-                        'cout_$': cout,
-                        'marge_C': T_max_limit - Tmax
-                    })
-                    
-                    # Vérifier si c'est la meilleure configuration
-                    if cout < best_cost and Tmax <= T_max_limit :
-                        best_cost = cout
-                        best_config = {
-                            'R': R,
-                            'a': a,
-                            'N': N,
-                            'Tmax': Tmax,
-                            'Tmin': Tmin,
-                            'cout': cout,
-                            'marge': T_max_limit - Tmax
+
+                # Calculer la déviation par rapport à la cible de température
+                # Cible centrale = (T_max_target_min + T_max_target_max) / 2
+                T_target_center = (T_max_target_min + T_max_target_max) / 2
+                temp_deviation = abs(Tmax - T_target_center)
+
+                # Enregistrer tous les résultats
+                results.append({
+                    'R_mm': R * 1000,
+                    'a_mm': a * 1000,
+                    'N': N,
+                    'Tmax_C': Tmax,
+                    'Tmin_C': Tmin,
+                    'cout_$': cout,
+                    'temp_deviation_C': temp_deviation
+                })
+
+                # Solution 1: Température la plus proche de la cible (248-250°C)
+                if temp_deviation < min_temp_deviation:
+                    min_temp_deviation = temp_deviation
+                    best_temp_match = {
+                        'R': R, 'a': a, 'N': N,
+                        'Tmax': Tmax, 'Tmin': Tmin, 'cout': cout,
+                        'deviation': temp_deviation
+                    }
+                    print(f"  → Nouvelle meilleure précision temp: N={N}, Tmax={Tmax:.2f}°C (dév={temp_deviation:.2f}°C)")
+
+                # Solutions 2 et 3: Seulement si dans la plage cible [248-250]
+                if T_max_target_min <= Tmax <= T_max_target_max:
+
+                    # Solution 2: Coût minimal dans la plage
+                    if cout < min_cost:
+                        min_cost = cout
+                        best_cost = {
+                            'R': R, 'a': a, 'N': N,
+                            'Tmax': Tmax, 'Tmin': Tmin, 'cout': cout,
+                            'deviation': temp_deviation
                         }
-                    
-                    break  # Passer à la prochaine combinaison (R, a)
-            
-            if N_found is None:
-                print(f"  → Aucun N trouvé (Tmax toujours > {T_max_limit+tolerance}°C)")
+                        print(f"  → Nouveau meilleur coût: N={N}, Tmax={Tmax:.2f}°C, Coût={cout:.2f}$")
+
+                    # Solution 3: Nombre d'ailettes minimal dans la plage
+                    if N < min_N:
+                        min_N = N
+                        best_min_fins = {
+                            'R': R, 'a': a, 'N': N,
+                            'Tmax': Tmax, 'Tmin': Tmin, 'cout': cout,
+                            'deviation': temp_deviation
+                        }
+                        print(f"  → Nouveau N minimal: N={N}, Tmax={Tmax:.2f}°C, Coût={cout:.2f}$")
     
     elapsed_time = time.time() - start_time
-    
+
     # Créer DataFrame
     df_results = pd.DataFrame(results)
-    
+
     print("\n" + "="*80)
     print(" OPTIMISATION TERMINÉE")
     print("="*80)
     print(f"Temps écoulé: {elapsed_time:.1f} secondes")
     print(f"Configurations testées: {len(results)}")
-    
-    if best_config:
-        print("\n" + "🏆 CONFIGURATION OPTIMALE TROUVÉE ".center(80, "="))
-        print(f"\n  Rayon tube:        R = {best_config['R']*1000:.3f} mm")
-        print(f"  Longueur ailettes: a = {best_config['a']*1000:.3f} mm")
-        print(f"  Nombre ailettes:   N = {best_config['N']}")
-        print(f"\n  Température max:   T_max = {best_config['Tmax']:.2f} °C")
-        print(f"  Température min:   T_min = {best_config['Tmin']:.2f} °C")
-        print(f"  Marge sécurité:    {best_config['marge']:.2f} °C")
-        print(f"\n  COÛT MINIMUM:      {best_config['cout']:.2f} $")
-        print("="*80)
+
+    # Afficher les 3 solutions optimales
+    print("\n" + "="*80)
+    print(" 🏆 3 SOLUTIONS OPTIMALES TROUVÉES ".center(80))
+    print("="*80)
+
+    # Solution 1: Température la plus proche
+    if best_temp_match:
+        print("\n" + "─"*80)
+        print("📌 SOLUTION 1: TEMPÉRATURE LA PLUS PROCHE DE LA CIBLE [248-250°C]")
+        print("─"*80)
+        print(f"  Rayon tube:        R = {best_temp_match['R']*1000:.3f} mm")
+        print(f"  Longueur ailettes: a = {best_temp_match['a']*1000:.3f} mm")
+        print(f"  Nombre ailettes:   N = {best_temp_match['N']}")
+        print(f"\n  Température max:   T_max = {best_temp_match['Tmax']:.2f} °C  ⭐ (déviation = {best_temp_match['deviation']:.2f}°C)")
+        print(f"  Température min:   T_min = {best_temp_match['Tmin']:.2f} °C")
+        print(f"  Coût total:        {best_temp_match['cout']:.2f} $")
     else:
-        print("\n⚠️  Aucune configuration optimale trouvée dans les plages données!")
-    
-    return df_results, best_config
+        print("\n⚠️  Solution 1 non trouvée")
+
+    # Solution 2: Coût minimal
+    if best_cost:
+        print("\n" + "─"*80)
+        print("💰 SOLUTION 2: COÛT MINIMAL (avec 248°C ≤ Tmax ≤ 250°C)")
+        print("─"*80)
+        print(f"  Rayon tube:        R = {best_cost['R']*1000:.3f} mm")
+        print(f"  Longueur ailettes: a = {best_cost['a']*1000:.3f} mm")
+        print(f"  Nombre ailettes:   N = {best_cost['N']}")
+        print(f"\n  Température max:   T_max = {best_cost['Tmax']:.2f} °C")
+        print(f"  Température min:   T_min = {best_cost['Tmin']:.2f} °C")
+        print(f"  Coût total:        {best_cost['cout']:.2f} $  ⭐ (COÛT MINIMAL)")
+    else:
+        print("\n⚠️  Solution 2 non trouvée (aucune config dans la plage 248-250°C)")
+
+    # Solution 3: Nombre d'ailettes minimal
+    if best_min_fins:
+        print("\n" + "─"*80)
+        print("🔧 SOLUTION 3: NOMBRE D'AILETTES MINIMAL (avec 248°C ≤ Tmax ≤ 250°C)")
+        print("─"*80)
+        print(f"  Rayon tube:        R = {best_min_fins['R']*1000:.3f} mm")
+        print(f"  Longueur ailettes: a = {best_min_fins['a']*1000:.3f} mm")
+        print(f"  Nombre ailettes:   N = {best_min_fins['N']}  ⭐ (N MINIMAL)")
+        print(f"\n  Température max:   T_max = {best_min_fins['Tmax']:.2f} °C")
+        print(f"  Température min:   T_min = {best_min_fins['Tmin']:.2f} °C")
+        print(f"  Coût total:        {best_min_fins['cout']:.2f} $")
+    else:
+        print("\n⚠️  Solution 3 non trouvée (aucune config dans la plage 248-250°C)")
+
+    print("\n" + "="*80)
+
+    return df_results, {'temp_match': best_temp_match, 'min_cost': best_cost, 'min_fins': best_min_fins}
 
 
 # ============================================================================
@@ -229,13 +288,13 @@ def plot_optimization_results(df_results):
     ax4.set_zlabel('Coût [$]')
     ax4.set_title('Surface de coût')
     
-    # 5. Marge de sécurité vs Coût
+    # 5. Déviation de température vs Coût
     ax5 = plt.subplot(2, 3, 5)
-    scatter = ax5.scatter(df_results['marge_C'], df_results['cout_$'], 
+    scatter = ax5.scatter(df_results['temp_deviation_C'], df_results['cout_$'],
                          c=df_results['N'], cmap='coolwarm', s=50, alpha=0.6)
-    ax5.set_xlabel('Marge de sécurité [°C]')
+    ax5.set_xlabel('Déviation de température (par rapport à 249°C) [°C]')
     ax5.set_ylabel('Coût [$]')
-    ax5.set_title('Compromis Coût-Sécurité')
+    ax5.set_title('Compromis Coût-Précision de Température')
     plt.colorbar(scatter, ax=ax5, label='Nombre ailettes N')
     ax5.grid(True, alpha=0.3)
     
@@ -289,51 +348,55 @@ if __name__ == "__main__":
     a_values = py.linspace(0.020, 0.050, 7)    # 20 à 50 mm, 7 points
 
     print("\n🔍 PHASE 1: EXPLORATION LARGE")
-    df_results, best_config = optimize_design(
+    df_results, best_configs = optimize_design(
         L, P, h_conv, T_air, k_c,
         R_range=R_values,
         a_range=a_values,
         N_min=10,
         N_max=100,
         N_step=10,
-        T_max_limit=250,
-        tolerance=2
+        T_max_target_min=248,
+        T_max_target_max=250
     )
-    
+
     # Sauvegarder les résultats
     if not df_results.empty:
         df_results.to_csv('resultats_optimisation_phase1.csv', index=False)
         print("\n📊 Résultats sauvegardés: resultats_optimisation_phase1.csv")
-        
-        # Afficher le top 10
-        print("\n📋 TOP 10 DES CONFIGURATIONS:")
-        print(df_results.nsmallest(10, 'cout_$').to_string(index=False))
-        
+
+        # Afficher le top 10 par coût
+        print("\n📋 TOP 10 DES CONFIGURATIONS (par coût):")
+        top_10 = df_results.nsmallest(10, 'cout_$')
+        print(top_10[['R_mm', 'a_mm', 'N', 'Tmax_C', 'cout_$', 'temp_deviation_C']].to_string(index=False))
+
         # Visualisation
         plot_optimization_results(df_results)
-    
-    # === PHASE 2: RAFFINEMENT (optionnel) ===
-    if best_config:
-        print("\n\n🔬 PHASE 2: RAFFINEMENT AUTOUR DE L'OPTIMUM")
 
-        R_opt = best_config['R']
-        a_opt = best_config['a']
+    # === PHASE 2: RAFFINEMENT (optionnel) ===
+    # On raffine autour de la solution à coût minimal
+    if best_configs and best_configs['min_cost']:
+        print("\n\n🔬 PHASE 2: RAFFINEMENT AUTOUR DE LA SOLUTION À COÛT MINIMAL")
+
+        best_cost_config = best_configs['min_cost']
+        R_opt = best_cost_config['R']
+        a_opt = best_cost_config['a']
+        N_opt = best_cost_config['N']
 
         # Raffiner avec une grille plus fine autour de l'optimum
-        R_values_fine = py.linspace(R_opt - 0.002, R_opt + 0.002, 9)  # ±2mm, 9 points
-        a_values_fine = py.linspace(a_opt - 0.005, a_opt + 0.005, 9)  # ±5mm, 9 points
+        R_values_fine = py.linspace(max(0.006, R_opt - 0.002), R_opt + 0.002, 9)  # ±2mm, 9 points
+        a_values_fine = py.linspace(max(0.020, a_opt - 0.005), a_opt + 0.005, 9)  # ±5mm, 9 points
 
-        df_results_fine, best_config_fine = optimize_design(
+        df_results_fine, best_configs_fine = optimize_design(
             L, P, h_conv, T_air, k_c,
             R_range=R_values_fine,
             a_range=a_values_fine,
-            N_min=max(10, best_config['N'] - 10),
-            N_max=best_config['N'] + 10,
+            N_min=max(10, N_opt - 10),
+            N_max=N_opt + 10,
             N_step=2,
-            T_max_limit=250,
-            tolerance=2
+            T_max_target_min=248,
+            T_max_target_max=250
         )
-        
+
         if not df_results_fine.empty:
             df_results_fine.to_csv('resultats_optimisation_phase2.csv', index=False)
             print("\n📊 Résultats raffinés sauvegardés: resultats_optimisation_phase2.csv")
