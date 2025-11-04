@@ -1,4 +1,4 @@
-import numpy as np
+import numpy as py
 import pandas as pd
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
@@ -19,7 +19,7 @@ def solve_thermal_problem(L, P, h_conv, T_air, k_c, R, a, N, verbose=False):
     Retourne: (Tmax, Tmin, cout, success)
     """
     
-    pi = np.pi
+    pi = py.pi
     
     # Géométrie
     t1 = R / 5
@@ -36,20 +36,20 @@ def solve_thermal_problem(L, P, h_conv, T_air, k_c, R, a, N, verbose=False):
     z_max = pas_ailette / 2
     
     # Génération du maillage
-    r_tube = np.linspace(R_int, R, nr_tube)
-    r_ailette_sans_tube = np.linspace(R, R+a, nr_ailette+1)[1:]
-    r_coords = np.concatenate([r_tube, r_ailette_sans_tube])
-    
-    z_ailette = np.linspace(0, t_a/2, nz_ailette)
-    z_espace = np.linspace(t_a/2, z_max, nz_espace+1)[1:]
-    z_coords = np.concatenate([z_ailette, z_espace])
+    r_tube = py.linspace(R_int, R, nr_tube)
+    r_ailette_sans_tube = py.linspace(R, R+a, nr_ailette+1)[1:]
+    r_coords = py.concatenate([r_tube, r_ailette_sans_tube])
+
+    z_ailette = py.linspace(0, t_a/2, nz_ailette)
+    z_espace = py.linspace(t_a/2, z_max, nz_espace+1)[1:]
+    z_coords = py.concatenate([z_ailette, z_espace])
     
     nz_total = len(z_coords)
     nr_total = len(r_coords)
     nn_total = nz_total * nr_total
     
     # Coordonnées des noeuds
-    xy = np.zeros((nn_total, 2))
+    xy = py.zeros((nn_total, 2))
     node_id = 0
     for iz in range(nz_total):
         for ir in range(nr_total):
@@ -72,14 +72,14 @@ def solve_thermal_problem(L, P, h_conv, T_air, k_c, R, a, N, verbose=False):
             elements.append([n1, n2, n3])
             elements.append([n1, n3, n4])
     
-    cn = np.array(elements)
+    cn = py.array(elements)
     ne = cn.shape[0]
-    kc = np.full(ne, k_c)
+    kc = py.full(ne, k_c)
     Q = 0
     
     # Conditions frontières - Convection
     convection_faces = []
-    idx_R = np.where(np.isclose(r_coords, R, rtol=1e-6))[0][0]
+    idx_R = py.where(py.isclose(r_coords, R, rtol=1e-6))[0][0]
     idx_Ra = len(r_coords) - 1
     idx_ta2 = len(z_ailette) - 1
     idx_0 = 0
@@ -100,9 +100,9 @@ def solve_thermal_problem(L, P, h_conv, T_air, k_c, R, a, N, verbose=False):
         nj = get_node_number(idx_Ra, iz+1)
         convection_faces.append([ni, nj, h_conv, T_air])
     
-    ijhTf = np.array(convection_faces)
+    ijhTf = py.array(convection_faces)
     nh = ijhTf.shape[0]
-    
+
     # Conditions frontières - Flux
     sigma_i = P / (2 * pi * R_int * L)
     flux_faces = []
@@ -111,14 +111,14 @@ def solve_thermal_problem(L, P, h_conv, T_air, k_c, R, a, N, verbose=False):
         ni = get_node_number(idx_Rint, iz)
         nj = get_node_number(idx_Rint, iz+1)
         flux_faces.append([ni, nj, sigma_i])
-    
-    ijflux = np.array(flux_faces)
+
+    ijflux = py.array(flux_faces)
     nflux = ijflux.shape[0]
-    
+
     # Résolution
     nn = xy.shape[0]
-    kg = np.zeros((nn, nn))
-    fg = np.zeros(nn)
+    kg = py.zeros((nn, nn))
+    fg = py.zeros(nn)
     
     # Matrices de conduction
     for ie in range(ne):
@@ -127,23 +127,23 @@ def solve_thermal_problem(L, P, h_conv, T_air, k_c, R, a, N, verbose=False):
         xj, yj = xy[nj-1, 0], xy[nj-1, 1]
         xk, yk = xy[nk-1, 0], xy[nk-1, 1]
         
-        Vi = np.array([xk-xj, yk-yj])
-        Vj = np.array([xi-xk, yi-yk])
-        Vk = np.array([xj-xi, yj-yi])
-        
+        Vi = py.array([xk-xj, yk-yj])
+        Vj = py.array([xi-xk, yi-yk])
+        Vk = py.array([xj-xi, yj-yi])
+
         A = 0.5 * ((xj-xi)*(yk-yj) - (yj-yi)*(xk-xj))
         xm = (xi + xj + xk) / 3
-        
-        K = kc[ie] * xm / (4 * abs(A)) * np.array([
-            [np.dot(Vi, Vi), np.dot(Vi, Vj), np.dot(Vi, Vk)],
-            [np.dot(Vj, Vi), np.dot(Vj, Vj), np.dot(Vj, Vk)],
-            [np.dot(Vk, Vi), np.dot(Vk, Vj), np.dot(Vk, Vk)]
+
+        K = kc[ie] * xm / (4 * abs(A)) * py.array([
+            [py.dot(Vi, Vi), py.dot(Vi, Vj), py.dot(Vi, Vk)],
+            [py.dot(Vj, Vi), py.dot(Vj, Vj), py.dot(Vj, Vk)],
+            [py.dot(Vk, Vi), py.dot(Vk, Vj), py.dot(Vk, Vk)]
         ])
-        
-        fV = Q * abs(A) / 12 * np.array([2*xi + xj + xk, xi + 2*xj + xk, xi + xj + 2*xk])
-        
-        ind = np.array([ni-1, nj-1, nk-1])
-        ix, iy = np.meshgrid(ind, ind)
+
+        fV = Q * abs(A) / 12 * py.array([2*xi + xj + xk, xi + 2*xj + xk, xi + xj + 2*xk])
+
+        ind = py.array([ni-1, nj-1, nk-1])
+        ix, iy = py.meshgrid(ind, ind)
         kg[ix, iy] += K
         fg[ind] += fV
     
@@ -153,13 +153,13 @@ def solve_thermal_problem(L, P, h_conv, T_air, k_c, R, a, N, verbose=False):
         hij, Tfij = ijhTf[fi, 2], ijhTf[fi, 3]
         xi, yi = xy[ni-1, 0], xy[ni-1, 1]
         xj, yj = xy[nj-1, 0], xy[nj-1, 1]
-        Lij = np.sqrt((xj-xi)**2 + (yj-yi)**2)
-        
-        H = Lij * hij / 12 * np.array([[3*xi + xj, xi + xj], [xi + xj, xi + 3*xj]])
-        fh = Lij * hij * Tfij / 6 * np.array([2*xi + xj, xi + 2*xj])
-        
-        ind = np.array([ni-1, nj-1])
-        ix, iy = np.meshgrid(ind, ind)
+        Lij = py.sqrt((xj-xi)**2 + (yj-yi)**2)
+
+        H = Lij * hij / 12 * py.array([[3*xi + xj, xi + xj], [xi + xj, xi + 3*xj]])
+        fh = Lij * hij * Tfij / 6 * py.array([2*xi + xj, xi + 2*xj])
+
+        ind = py.array([ni-1, nj-1])
+        ix, iy = py.meshgrid(ind, ind)
         kg[ix, iy] += H
         fg[ind] += fh
     
@@ -169,20 +169,20 @@ def solve_thermal_problem(L, P, h_conv, T_air, k_c, R, a, N, verbose=False):
         sij = ijflux[fi, 2]
         xi, yi = xy[ni-1, 0], xy[ni-1, 1]
         xj, yj = xy[nj-1, 0], xy[nj-1, 1]
-        Lij = np.sqrt((xj-xi)**2 + (yj-yi)**2)
-        
-        fs = Lij * sij / 6 * np.array([2*xi + xj, xi + 2*xj])
-        ind = np.array([ni-1, nj-1])
+        Lij = py.sqrt((xj-xi)**2 + (yj-yi)**2)
+
+        fs = Lij * sij / 6 * py.array([2*xi + xj, xi + 2*xj])
+        ind = py.array([ni-1, nj-1])
         fg[ind] += fs
     
     # Solution
     try:
-        T = np.linalg.solve(kg, fg)
-        Tmax = np.max(T)
-        Tmin = np.min(T)
-        
+        T = py.linalg.solve(kg, fg)
+        Tmax = py.max(T)
+        Tmin = py.min(T)
+
         # Calcul du coût
-        cout = 2e4 * L * R**2 + 1000 * N * a * ((R+a)**2 - R**2) + 3 * np.sqrt(N)
+        cout = 2e4 * L * R**2 + 1000 * N * a * ((R+a)**2 - R**2) + 3 * py.sqrt(N)
         
         if verbose:
             print(f"  R={R*1000:.1f}mm, a={a*1000:.1f}mm, N={N:3d} → Tmax={Tmax:.1f}°C, Coût={cout:.2f}$")
@@ -368,8 +368,8 @@ def plot_optimization_results(df_results):
     a_unique = sorted(df_results['a_mm'].unique())
     
     # Créer une grille régulière
-    R_grid, a_grid = np.meshgrid(R_unique, a_unique)
-    cout_grid = np.zeros_like(R_grid)
+    R_grid, a_grid = py.meshgrid(R_unique, a_unique)
+    cout_grid = py.zeros_like(R_grid)
     
     for i, R_val in enumerate(R_unique):
         for j, a_val in enumerate(a_unique):
@@ -378,7 +378,7 @@ def plot_optimization_results(df_results):
             if not matching.empty:
                 cout_grid[j, i] = matching['cout_$'].values[0]
             else:
-                cout_grid[j, i] = np.nan
+                cout_grid[j, i] = py.nan
     
     surf = ax4.plot_surface(R_grid, a_grid, cout_grid, cmap='viridis', alpha=0.8)
     ax4.set_xlabel('R [mm]')
@@ -431,20 +431,20 @@ def plot_optimization_results(df_results):
 
 if __name__ == "__main__":
     
-    # === PARAMÈTRES DU PROJET (MODIFIER SELON VOTRE ÉQUIPE) ===
-    L = 3        # [m]
-    P = 3600       # [W]
-    h_conv = 30    # [W/m²°C]
-    T_air = 60     # [°C]
-    k_c = 150      # [W/m°C]
+    # === PARAMÈTRES DU PROJET (MEC423-02, Équipe 10) ===
+    L = 3.0      # [m]
+    P = 3600     # [W] (3.6 kW)
+    h_conv = 30  # [W/m²°C]
+    T_air = 60   # [°C]
+    k_c = 150    # [W/m°C]
     
     # === PLAGES D'OPTIMISATION ===
     # Suggestion: Commencer avec des plages larges et peu de points
     # puis raffiner autour de l'optimum trouvé
     
     # Première itération: exploration large
-    R_values = np.linspace(0.005, 0.008, 100)  # 5 à 8 mm, 100 points
-    a_values = np.linspace(0.050, 0.070, 100)  # 50 à 70 mm, 100 points
+    R_values = py.linspace(0.005, 0.008, 100)  # 5 à 8 mm, 100 points
+    a_values = py.linspace(0.050, 0.070, 100)  # 50 à 70 mm, 100 points
     
     print("\n🔍 PHASE 1: EXPLORATION LARGE")
     df_results, best_config = optimize_design(
@@ -478,8 +478,8 @@ if __name__ == "__main__":
         a_opt = best_config['a']
         
         # Raffiner avec une grille plus fine
-        R_values_fine = np.linspace(R_opt - 0.001, R_opt + 0.001, 10)  # ±1mm
-        a_values_fine = np.linspace(a_opt - 0.001, a_opt + 0.001, 10)  # ±1mm
+        R_values_fine = py.linspace(R_opt - 0.001, R_opt + 0.001, 10)  # ±1mm
+        a_values_fine = py.linspace(a_opt - 0.001, a_opt + 0.001, 10)  # ±1mm
         
         df_results_fine, best_config_fine = optimize_design(
             L, P, h_conv, T_air, k_c,

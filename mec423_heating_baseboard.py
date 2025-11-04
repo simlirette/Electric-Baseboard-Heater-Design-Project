@@ -15,9 +15,9 @@ pi = py.pi
 # 1) PARAMÈTRES DU PROBLÈME
 # ============================================================================
 
-# --- Données du projet (À MODIFIER selon votre équipe - Tableau 1) ---
-L = 3      # Longueur du tube [m] - Exemple: MEC423-01, Équipe 1
-P = 3600     # Puissance à dissiper [W] - Exemple: 3.0 kW
+# --- Données du projet (MEC423-02, Équipe 10) ---
+L = 3.0      # Longueur du tube [m]
+P = 3600     # Puissance à dissiper [W] (3.6 kW)
 h_conv = 30  # Coefficient de convection [W/(m²·°C)]
 T_air = 60   # Température de l'air ambiant [°C]
 
@@ -271,8 +271,8 @@ plt.show(block=False)
 plt.pause(1)
 
 print("\nVérifiez le maillage dans la Figure 1.")
-print("Appuyez sur Entrée pour continuer vers la résolution...")
-input()
+print("Fermer la figure pour continuer vers la résolution...")
+# input()  # Commenté pour permettre l'optimisation automatique
 
 # ============================================================================
 # RÉSOLUTION DU PROBLÈME THERMIQUE
