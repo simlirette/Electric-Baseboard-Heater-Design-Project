@@ -350,13 +350,13 @@ if Resoudre:
         
         # Longueur de la facette
         Lij = py.sqrt((xj-xi)**2 + (yj-yi)**2)
-        
+
         # Matrice de convection (axisymétrique)
         H = Lij * hij / 12 * py.array([
             [3*xi + xj, xi + xj],
             [xi + xj, xi + 3*xj]
         ])
-        
+
         # Vecteur force de convection
         fh = Lij * hij * Tfij / 6 * py.array([
             2*xi + xj,
@@ -385,7 +385,7 @@ if Resoudre:
         
         # Longueur de la facette
         Lij = py.sqrt((xj-xi)**2 + (yj-yi)**2)
-        
+
         # Vecteur force de flux (axisymétrique)
         fs = Lij * sij / 6 * py.array([
             2*xi + xj,
