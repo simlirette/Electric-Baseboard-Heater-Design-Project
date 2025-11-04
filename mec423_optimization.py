@@ -4,194 +4,37 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import time
 
+# Importer la fonction de résolution depuis le programme principal
+from mec423_heating_baseboard import solve_heating_baseboard
+
 # ============================================================================
 # SCRIPT D'OPTIMISATION POUR LE PROJET MEC423
 # Ce script automatise la recherche de la configuration optimale (R, a, N)
 # ============================================================================
 
-# IMPORTANT: Copiez/collez la fonction solve_thermal_problem() depuis le code principal
-# ou importez-la si vous avez structuré votre code en modules
-
 def solve_thermal_problem(L, P, h_conv, T_air, k_c, R, a, N, verbose=False):
     """
     Résout le problème thermique pour une configuration donnée.
-    
+    Utilise la fonction complète de mec423_heating_baseboard.
+
     Retourne: (Tmax, Tmin, cout, success)
     """
-    
-    pi = py.pi
-    
-    # Géométrie
-    t1 = R / 5
-    R_int = R - t1
-    t_a = a / 100
-    pas_ailette = L / N
-    
-    # Paramètres de maillage (adapter selon la précision souhaitée)
-    nr_tube = 4
-    nr_ailette = 6
-    nz_ailette = 2
-    nz_espace = 8
-    
-    z_max = pas_ailette / 2
-    
-    # Génération du maillage
-    r_tube = py.linspace(R_int, R, nr_tube)
-    r_ailette_sans_tube = py.linspace(R, R+a, nr_ailette+1)[1:]
-    r_coords = py.concatenate([r_tube, r_ailette_sans_tube])
 
-    z_ailette = py.linspace(0, t_a/2, nz_ailette)
-    z_espace = py.linspace(t_a/2, z_max, nz_espace+1)[1:]
-    z_coords = py.concatenate([z_ailette, z_espace])
-    
-    nz_total = len(z_coords)
-    nr_total = len(r_coords)
-    nn_total = nz_total * nr_total
-    
-    # Coordonnées des noeuds
-    xy = py.zeros((nn_total, 2))
-    node_id = 0
-    for iz in range(nz_total):
-        for ir in range(nr_total):
-            xy[node_id, 0] = r_coords[ir]
-            xy[node_id, 1] = z_coords[iz]
-            node_id += 1
-    
-    # Fonction pour numérotation
-    def get_node_number(ir, iz):
-        return iz * nr_total + ir + 1
-    
-    # Connectivités
-    elements = []
-    for iz in range(nz_total - 1):
-        for ir in range(nr_total - 1):
-            n1 = get_node_number(ir, iz)
-            n2 = get_node_number(ir+1, iz)
-            n3 = get_node_number(ir+1, iz+1)
-            n4 = get_node_number(ir, iz+1)
-            elements.append([n1, n2, n3])
-            elements.append([n1, n3, n4])
-    
-    cn = py.array(elements)
-    ne = cn.shape[0]
-    kc = py.full(ne, k_c)
-    Q = 0
-    
-    # Conditions frontières - Convection
-    convection_faces = []
-    idx_R = py.where(py.isclose(r_coords, R, rtol=1e-6))[0][0]
-    idx_Ra = len(r_coords) - 1
-    idx_ta2 = len(z_ailette) - 1
-    idx_0 = 0
-    idx_zmax = nz_total - 1
-    
-    for iz in range(idx_ta2, idx_zmax):
-        ni = get_node_number(idx_R, iz)
-        nj = get_node_number(idx_R, iz+1)
-        convection_faces.append([ni, nj, h_conv, T_air])
-    
-    for ir in range(idx_R, idx_Ra):
-        ni = get_node_number(ir, idx_ta2)
-        nj = get_node_number(ir+1, idx_ta2)
-        convection_faces.append([ni, nj, h_conv, T_air])
-    
-    for iz in range(idx_0, idx_ta2):
-        ni = get_node_number(idx_Ra, iz)
-        nj = get_node_number(idx_Ra, iz+1)
-        convection_faces.append([ni, nj, h_conv, T_air])
-    
-    ijhTf = py.array(convection_faces)
-    nh = ijhTf.shape[0]
+    # Appeler la fonction du programme principal avec des paramètres de maillage optimisés pour vitesse
+    result = solve_heating_baseboard(
+        L=L, P=P, h_conv=h_conv, T_air=T_air, k_c=k_c,
+        R=R, a=a, N=N,
+        nr_tube=4,        # Réduit pour vitesse (5 dans le programme principal)
+        nr_ailette=6,     # Réduit pour vitesse (8 dans le programme principal)
+        nz_ailette=2,     # Réduit pour vitesse (3 dans le programme principal)
+        nz_espace=8,      # Réduit pour vitesse (10 dans le programme principal)
+        verbose=verbose,
+        plot_results=False
+    )
 
-    # Conditions frontières - Flux
-    sigma_i = P / (2 * pi * R_int * L)
-    flux_faces = []
-    idx_Rint = 0
-    for iz in range(nz_total - 1):
-        ni = get_node_number(idx_Rint, iz)
-        nj = get_node_number(idx_Rint, iz+1)
-        flux_faces.append([ni, nj, sigma_i])
-
-    ijflux = py.array(flux_faces)
-    nflux = ijflux.shape[0]
-
-    # Résolution
-    nn = xy.shape[0]
-    kg = py.zeros((nn, nn))
-    fg = py.zeros(nn)
-    
-    # Matrices de conduction
-    for ie in range(ne):
-        ni, nj, nk = cn[ie, 0], cn[ie, 1], cn[ie, 2]
-        xi, yi = xy[ni-1, 0], xy[ni-1, 1]
-        xj, yj = xy[nj-1, 0], xy[nj-1, 1]
-        xk, yk = xy[nk-1, 0], xy[nk-1, 1]
-        
-        Vi = py.array([xk-xj, yk-yj])
-        Vj = py.array([xi-xk, yi-yk])
-        Vk = py.array([xj-xi, yj-yi])
-
-        A = 0.5 * ((xj-xi)*(yk-yj) - (yj-yi)*(xk-xj))
-        xm = (xi + xj + xk) / 3
-
-        K = kc[ie] * xm / (4 * abs(A)) * py.array([
-            [py.dot(Vi, Vi), py.dot(Vi, Vj), py.dot(Vi, Vk)],
-            [py.dot(Vj, Vi), py.dot(Vj, Vj), py.dot(Vj, Vk)],
-            [py.dot(Vk, Vi), py.dot(Vk, Vj), py.dot(Vk, Vk)]
-        ])
-
-        fV = Q * abs(A) / 12 * py.array([2*xi + xj + xk, xi + 2*xj + xk, xi + xj + 2*xk])
-
-        ind = py.array([ni-1, nj-1, nk-1])
-        ix, iy = py.meshgrid(ind, ind)
-        kg[ix, iy] += K
-        fg[ind] += fV
-    
-    # Convection
-    for fi in range(nh):
-        ni, nj = int(ijhTf[fi, 0]), int(ijhTf[fi, 1])
-        hij, Tfij = ijhTf[fi, 2], ijhTf[fi, 3]
-        xi, yi = xy[ni-1, 0], xy[ni-1, 1]
-        xj, yj = xy[nj-1, 0], xy[nj-1, 1]
-        Lij = py.sqrt((xj-xi)**2 + (yj-yi)**2)
-
-        H = Lij * hij / 12 * py.array([[3*xi + xj, xi + xj], [xi + xj, xi + 3*xj]])
-        fh = Lij * hij * Tfij / 6 * py.array([2*xi + xj, xi + 2*xj])
-
-        ind = py.array([ni-1, nj-1])
-        ix, iy = py.meshgrid(ind, ind)
-        kg[ix, iy] += H
-        fg[ind] += fh
-    
-    # Flux
-    for fi in range(nflux):
-        ni, nj = int(ijflux[fi, 0]), int(ijflux[fi, 1])
-        sij = ijflux[fi, 2]
-        xi, yi = xy[ni-1, 0], xy[ni-1, 1]
-        xj, yj = xy[nj-1, 0], xy[nj-1, 1]
-        Lij = py.sqrt((xj-xi)**2 + (yj-yi)**2)
-
-        fs = Lij * sij / 6 * py.array([2*xi + xj, xi + 2*xj])
-        ind = py.array([ni-1, nj-1])
-        fg[ind] += fs
-    
-    # Solution
-    try:
-        T = py.linalg.solve(kg, fg)
-        Tmax = py.max(T)
-        Tmin = py.min(T)
-
-        # Calcul du coût
-        cout = 2e4 * L * R**2 + 1000 * N * a * ((R+a)**2 - R**2) + 3 * py.sqrt(N)
-        
-        if verbose:
-            print(f"  R={R*1000:.1f}mm, a={a*1000:.1f}mm, N={N:3d} → Tmax={Tmax:.1f}°C, Coût={cout:.2f}$")
-        
-        return Tmax, Tmin, cout, True
-        
-    except:
-        if verbose:
-            print(f"  R={R*1000:.1f}mm, a={a*1000:.1f}mm, N={N:3d} → ERREUR")
+    if result['success']:
+        return result['Tmax'], result['Tmin'], result['cout_total'], True
+    else:
         return 999, 0, 999999, False
 
 
@@ -402,11 +245,11 @@ def plot_optimization_results(df_results):
     R_best = best_row['R_mm'] / 1000
     a_best = best_row['a_mm'] / 1000
     N_best = int(best_row['N'])
-    L = 2.2  # Adapter selon vos données
-    
+    L = 3.0  # Longueur du tube
+
     cout_tube = 2e4 * L * R_best**2
     cout_ailettes = 1000 * N_best * a_best * ((R_best+a_best)**2 - R_best**2)
-    cout_assemblage = 3 * np.sqrt(N_best)
+    cout_assemblage = 3 * py.sqrt(N_best)
     
     categories = ['Tube', 'Ailettes', 'Assemblage']
     couts = [cout_tube, cout_ailettes, cout_assemblage]
@@ -439,21 +282,20 @@ if __name__ == "__main__":
     k_c = 150    # [W/m°C]
     
     # === PLAGES D'OPTIMISATION ===
-    # Suggestion: Commencer avec des plages larges et peu de points
-    # puis raffiner autour de l'optimum trouvé
-    
-    # Première itération: exploration large
-    R_values = py.linspace(0.005, 0.008, 100)  # 5 à 8 mm, 100 points
-    a_values = py.linspace(0.050, 0.070, 100)  # 50 à 70 mm, 100 points
-    
+    # Stratégie: Exploration large puis raffinement
+
+    # Première itération: exploration large avec moins de points pour vitesse
+    R_values = py.linspace(0.006, 0.012, 7)    # 6 à 12 mm, 7 points
+    a_values = py.linspace(0.020, 0.050, 7)    # 20 à 50 mm, 7 points
+
     print("\n🔍 PHASE 1: EXPLORATION LARGE")
     df_results, best_config = optimize_design(
         L, P, h_conv, T_air, k_c,
         R_range=R_values,
         a_range=a_values,
-        N_min=5,
-        N_max=30,
-        N_step=5,
+        N_min=10,
+        N_max=100,
+        N_step=10,
         T_max_limit=250,
         tolerance=2
     )
@@ -473,21 +315,21 @@ if __name__ == "__main__":
     # === PHASE 2: RAFFINEMENT (optionnel) ===
     if best_config:
         print("\n\n🔬 PHASE 2: RAFFINEMENT AUTOUR DE L'OPTIMUM")
-        
+
         R_opt = best_config['R']
         a_opt = best_config['a']
-        
-        # Raffiner avec une grille plus fine
-        R_values_fine = py.linspace(R_opt - 0.001, R_opt + 0.001, 10)  # ±1mm
-        a_values_fine = py.linspace(a_opt - 0.001, a_opt + 0.001, 10)  # ±1mm
-        
+
+        # Raffiner avec une grille plus fine autour de l'optimum
+        R_values_fine = py.linspace(R_opt - 0.002, R_opt + 0.002, 9)  # ±2mm, 9 points
+        a_values_fine = py.linspace(a_opt - 0.005, a_opt + 0.005, 9)  # ±5mm, 9 points
+
         df_results_fine, best_config_fine = optimize_design(
             L, P, h_conv, T_air, k_c,
             R_range=R_values_fine,
             a_range=a_values_fine,
-            N_min=max(10, best_config['N'] - 20),
-            N_max=best_config['N'] + 20,
-            N_step=5,
+            N_min=max(10, best_config['N'] - 10),
+            N_max=best_config['N'] + 10,
+            N_step=2,
             T_max_limit=250,
             tolerance=2
         )
