@@ -20,14 +20,14 @@ def solve_thermal_problem(L, P, h_conv, T_air, k_c, R, a, N, verbose=False):
     Retourne: (Tmax, Tmin, cout, success)
     """
 
-    # Appeler la fonction du programme principal avec des paramètres de maillage optimisés pour vitesse
+    # Appeler la fonction du programme principal avec les paramètres de maillage par défaut
     result = solve_heating_baseboard(
         L=L, P=P, h_conv=h_conv, T_air=T_air, k_c=k_c,
         R=R, a=a, N=N,
-        nr_tube=4,        # Réduit pour vitesse (5 dans le programme principal)
-        nr_ailette=6,     # Réduit pour vitesse (8 dans le programme principal)
-        nz_ailette=2,     # Réduit pour vitesse (3 dans le programme principal)
-        nz_espace=8,      # Réduit pour vitesse (10 dans le programme principal)
+        nr_tube=5,        # Même valeur que le programme principal
+        nr_ailette=8,     # Même valeur que le programme principal
+        nz_ailette=3,     # Même valeur que le programme principal
+        nz_espace=10,     # Même valeur que le programme principal
         verbose=verbose,
         plot_results=False
     )
