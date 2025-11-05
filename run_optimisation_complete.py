@@ -36,7 +36,7 @@ print("="*80)
 print(" OPTIMISATION COMPLÈTE - 3 SOLUTIONS OPTIMALES")
 print("="*80)
 print(f"\nObjectifs:")
-print(f"  1. Température max la plus proche de {T_target_min}-{T_target_max}°C")
+print(f"  1. Température MAX la plus élevée avec {T_target_min}°C ≤ Tmax ≤ {T_target_max}°C")
 print(f"  2. Coût minimal avec {T_target_min}°C ≤ Tmax ≤ {T_target_max}°C")
 print(f"  3. Nombre d'ailettes minimal avec {T_target_min}°C ≤ Tmax ≤ {T_target_max}°C")
 print("="*80)
@@ -63,7 +63,7 @@ best_temp = None
 best_cost = None
 best_fins = None
 
-min_temp_deviation = float('inf')
+max_tmax = 0  # Pour chercher la température MAX la plus élevée
 min_cost = float('inf')
 min_N = float('inf')
 
@@ -94,18 +94,18 @@ for R in R_vals:
                 cout = result['cout_total']
                 temp_deviation = abs(Tmax - T_target_center)
 
-                # Solution 1: Température la plus proche
-                if temp_deviation < min_temp_deviation:
-                    min_temp_deviation = temp_deviation
-                    best_temp = {
-                        'R': R, 'a': a, 'N': N,
-                        'Tmax': Tmax, 'cout': cout,
-                        'temp_deviation': temp_deviation
-                    }
-
-                # Solutions 2 et 3: dans la plage cible
+                # Toutes les solutions doivent être dans la plage cible
                 if T_target_min <= Tmax <= T_target_max:
                     count_valide += 1
+
+                    # Solution 1: Température MAX la plus élevée
+                    if Tmax > max_tmax:
+                        max_tmax = Tmax
+                        best_temp = {
+                            'R': R, 'a': a, 'N': N,
+                            'Tmax': Tmax, 'cout': cout,
+                            'temp_deviation': temp_deviation
+                        }
 
                     # Solution 2: Coût minimal
                     if cout < min_cost:
@@ -142,8 +142,8 @@ print(f"\n{'='*80}")
 print(f" RÉSULTATS PHASE 1")
 print(f"{'='*80}")
 
-afficher_solution(best_temp, "📌 SOLUTION 1: Précision Température",
-                 f"⭐ (déviation = {best_temp['temp_deviation']:.2f}°C)" if best_temp else "")
+afficher_solution(best_temp, "📌 SOLUTION 1: Température MAX la plus élevée",
+                 f"⭐ (Tmax = {best_temp['Tmax']:.2f}°C)" if best_temp else "")
 afficher_solution(best_cost, "💰 SOLUTION 2: Coût Minimal", "⭐" if best_cost else "")
 afficher_solution(best_fins, "🔧 SOLUTION 3: N Minimal", "⭐" if best_fins else "")
 
@@ -207,16 +207,18 @@ if best_cost:  # Raffiner autour de la solution à coût minimal
                     cout = result['cout_total']
                     temp_deviation = abs(Tmax - T_target_center)
 
-                    # Mettre à jour les meilleures
-                    if temp_deviation < min_temp_deviation:
-                        min_temp_deviation = temp_deviation
-                        best_temp = {
-                            'R': R, 'a': a, 'N': N,
-                            'Tmax': Tmax, 'cout': cout,
-                            'temp_deviation': temp_deviation
-                        }
-
+                    # Toutes les solutions doivent être dans la plage cible
                     if T_target_min <= Tmax <= T_target_max:
+                        # Solution 1: Température MAX la plus élevée
+                        if Tmax > max_tmax:
+                            max_tmax = Tmax
+                            best_temp = {
+                                'R': R, 'a': a, 'N': N,
+                                'Tmax': Tmax, 'cout': cout,
+                                'temp_deviation': temp_deviation
+                            }
+
+                        # Solution 2: Coût minimal
                         if cout < min_cost:
                             min_cost = cout
                             best_cost = {
@@ -225,6 +227,7 @@ if best_cost:  # Raffiner autour de la solution à coût minimal
                                 'temp_deviation': temp_deviation
                             }
 
+                        # Solution 3: N minimal
                         if N < min_N:
                             min_N = N
                             best_fins = {
@@ -244,8 +247,8 @@ print(f"\n{'='*80}")
 print(f" 🏆 RÉSULTATS FINAUX - 3 SOLUTIONS OPTIMALES")
 print(f"{'='*80}")
 
-afficher_solution(best_temp, "📌 SOLUTION 1: Précision Température",
-                 f"⭐ (déviation = {best_temp['temp_deviation']:.2f}°C)" if best_temp else "")
+afficher_solution(best_temp, "📌 SOLUTION 1: Température MAX la plus élevée",
+                 f"⭐ (Tmax = {best_temp['Tmax']:.2f}°C)" if best_temp else "")
 afficher_solution(best_cost, "💰 SOLUTION 2: Coût Minimal", "⭐" if best_cost else "")
 afficher_solution(best_fins, "🔧 SOLUTION 3: N Minimal", "⭐" if best_fins else "")
 
@@ -259,7 +262,7 @@ if best_temp or best_cost or best_fins:
 
     if best_temp:
         sol = best_temp
-        print(f"{'1. Précision Temp ⭐':<25} {sol['R']*1000:<10.3f} {sol['a']*1000:<10.3f} "
+        print(f"{'1. Tmax Élevée ⭐':<25} {sol['R']*1000:<10.3f} {sol['a']*1000:<10.3f} "
               f"{sol['N']:<6} {sol['Tmax']:<12.2f} {sol['cout']:<12.2f}")
 
     if best_cost:
